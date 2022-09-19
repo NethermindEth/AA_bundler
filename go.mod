@@ -25,6 +25,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d // indirect
 	github.com/holiman/bloomfilter/v2 v2.0.3 // indirect
 	github.com/jmoiron/sqlx v1.3.4 // indirect
+	github.com/joho/godotenv v1.4.0 // indirect
 	github.com/lib/pq v1.10.6 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/metachris/flashbotsrpc v0.5.0 // indirect

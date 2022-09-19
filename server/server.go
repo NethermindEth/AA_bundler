@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	// "go/types"
 	"math/big"
@@ -16,6 +17,7 @@ import (
 	ethclient "github.com/ethereum/go-ethereum/ethClient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/joho/godotenv"
 )
 
 var (
@@ -65,6 +67,11 @@ func main() {
 	http.HandleFunc("/eth_supportedEntryPoints", handle_eth_supportedEntryPoints)
 	if err := http.ListenAndServe(":8080", nil); err != nil { //listens for http reqs on 8080
 		log.Error("http server failed", "error", err)
+	}
+	envErr := godotenv.Load(".env")
+	if envErr != nil {
+		fmt.Printf("Error loading .env file")
+		os.Exit(1)
 	}
 }
 
@@ -147,7 +154,7 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 
 func handle_eth_supportedEntryPoints(respw http.ResponseWriter, req *http.Request) {
 	respw.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(respw, "0xwhatever")
+	fmt.Fprintf(respw, safeEntryPoints[0].String())
 }
 
 func NewTypeUserOperationWithEntryPoint(data []interface{}) *UserOperationWithEntryPoint { //needs to be tested
@@ -194,7 +201,7 @@ func getCurrentBlockBasefee() *big.Int {
 }
 
 func getClient() string {
-	return "https://eth-mainnet.g.alchemy.com/v2/uj-JFn5PF9yWYFNBdz1LcIb1B_GgBZOE"
+	return os.Getenv("CLIENT")
 }
 
 func getPaymaster(uop _UserOperation) common.Address {

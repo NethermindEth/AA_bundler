@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
-
-	c "flashbotsAAbundler/consts"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,17 +16,17 @@ func (s *UserOperationWithEntryPoint) CallHandleOps() (bool, *typ.Transaction, e
 	if err != nil {
 		return false, nil, err
 	}
-	EP, err := NewEntryPoint(common.HexToAddress(c.ENTRYPOINT_CONTRACT), conn)
+	EP, err := NewEntryPoint(common.HexToAddress(os.Getenv("ENTRYPOINT_CONTRACT")), conn)
 	if err != nil {
 		return false, nil, err
 	}
 	chainID, _ := conn.ChainID(context.Background())
-	auth, err := bind.NewTransactorWithChainID(strings.NewReader(c.Key), c.Passphrase, chainID)
+	auth, err := bind.NewTransactorWithChainID(strings.NewReader(os.Getenv("KEY")), os.Getenv("PASSPHRASE"), chainID)
 	if err != nil {
 		return false, nil, err
 	}
 	uop_array := buildUserOperationArray(s.UserOperation)
-	tx, err := EP.HandleOps(auth, uop_array, common.HexToAddress(c.TempBeneficiary))
+	tx, err := EP.HandleOps(auth, uop_array, common.HexToAddress(os.Getenv("TEMP_BENEFICIARY")))
 	if err != nil {
 		return false, nil, err
 	}
