@@ -11,7 +11,7 @@ import (
 	ethclient "github.com/ethereum/go-ethereum/ethClient"
 )
 
-func (s *UserOperationWithEntryPoint) CallHandleOps() (bool, *typ.Transaction, error) {
+func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
 	conn, err := ethclient.Dial(getClient())
 	if err != nil {
 		return false, nil, err
@@ -25,7 +25,7 @@ func (s *UserOperationWithEntryPoint) CallHandleOps() (bool, *typ.Transaction, e
 	if err != nil {
 		return false, nil, err
 	}
-	uop_array := buildUserOperationArray(s.UserOperation)
+	uop_array := buildUserOperationArray(s)
 	tx, err := EP.HandleOps(auth, uop_array, common.HexToAddress(os.Getenv("TEMP_BENEFICIARY")))
 	if err != nil {
 		return false, nil, err

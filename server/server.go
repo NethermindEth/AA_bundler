@@ -7,10 +7,10 @@ import (
 	"os"
 
 	// "go/types"
-	"math/big"
-	"net/http"
 
 	e "flashbotsAAbundler/consts"
+	"math/big"
+	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/misc"
@@ -63,20 +63,22 @@ type Result struct {
 }
 
 func main() {
-	http.HandleFunc("/eth_sendUserOperation", handle_eth_sendUserOperation)
-	http.HandleFunc("/eth_supportedEntryPoints", handle_eth_supportedEntryPoints)
-	if err := http.ListenAndServe(":8080", nil); err != nil { //listens for http reqs on 8080
-		log.Error("http server failed", "error", err)
-	}
 	envErr := godotenv.Load(".env")
 	if envErr != nil {
 		fmt.Printf("Error loading .env file")
 		os.Exit(1)
 	}
+	http.HandleFunc("/eth_sendUserOperation", handle_eth_sendUserOperation)
+	http.HandleFunc("/eth_supportedEntryPoints", handle_eth_supportedEntryPoints)
+	if err := http.ListenAndServe(":8080", nil); err != nil { //listens for http reqs on 8080
+		log.Error("http server failed", "error", err)
+	}
+
 }
 
 func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) {
 	respw.Header().Set("Content-Type", "application/json")
+	respw.WriteHeader(200)
 	//copying the params of the call to a type userOperationWithEntryPoint struct for ease in sanity checks
 	var r Request
 	err := json.NewDecoder(req.Body).Decode(&r)
@@ -84,9 +86,12 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 		http.Error(respw, err.Error(), http.StatusBadRequest)
 		return
 	}
-	sendUop := NewTypeUserOperationWithEntryPoint(r.Params)
+	// fmt.Printf("t1: %s\n", reflect.TypeOf(r.Params))
+	sendUop := NewTypeUserOperation(r.Params[0])
+	fmt.Print(r.Params[0])
+	fmt.Print(sendUop)
 	//Checking for safe Entry Point
-	if !sendUop.checkSafeEntryPoint() {
+	if !checkSafeEntryPoint(r.Params) {
 		http.Error(respw, "Entry point not safe,", e.JsonRpcInvalidParams)
 		return
 	}
@@ -97,45 +102,46 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 		return
 	}
 	//2. Either the sender is an existing contract, or the initCode is not empty (but not both)
-	senderCheck, err := sendUop.addressHasCode()
+	senderCheck, err := addressHasCode(sendUop)
 	if err != nil {
-		http.Error(respw, "error while getting code from sender address", e.JsonRpcInternalError) //error type not sure
+		http.Error(respw, err.Error(), e.JsonRpcInternalError) //error type not sure
 		return
 	}
-	if !senderCheck && sendUop.UserOperation.InitCode == nil {
+	if !senderCheck && sendUop.InitCode == nil {
 		http.Error(respw, "neither sender nor initcode available", e.JsonRpcInvalidParams)
 		return
 	}
-	if senderCheck && sendUop.UserOperation.InitCode != nil {
+	if senderCheck && sendUop.InitCode != nil {
 		http.Error(respw, "cant take wallet as well as InitCode", e.JsonRpcInvalidParams)
 	}
 	//3. Verification gas is sufficiently low
 	max_verification_gas := big.NewInt(100e9) //from kristof's mev searcher bot. Needs optimization
-	if sendUop.UserOperation.VerificationGas.Cmp(max_verification_gas) > 0 {
+	if sendUop.VerificationGas.Cmp(max_verification_gas) > 0 {
 		http.Error(respw, "verification gas higher than max_verification_gas", e.JsonRpcInvalidParams)
 	}
 	//4.preVerification gas is sufficiently high
 	sum := big.NewInt(0)
-	sum.Add(sendUop.UserOperation.CallGas, sendUop.UserOperation.VerificationGas)
-	if sendUop.UserOperation.PreVerificationGas.Cmp(sum) < 0 {
+	sum.Add(sendUop.CallGas, sendUop.VerificationGas)
+	if sendUop.PreVerificationGas.Cmp(sum) < 0 {
 		http.Error(respw, "PreVerificationGas is not high enough", e.JsonRpcInvalidParams)
 	}
 	//5. Paymaster is either zero address or contract with non zero code, registered and staked, sufficient deposit and not blacklisted
 	//TODO need to have a db to handle registered paymasters and blacklisted paymasters
 	//TODO check for sufficient deposit
-	paymasterCheck, err := sendUop.addressHasCode()
+	fmt.Println(r.Params[0])
+	paymasterCheck, err := addressHasCode(sendUop)
 	if err != nil {
 		http.Error(respw, "error while getting code from sender address", e.JsonRpcInternalError) //error type not confirmed
 		return
 	}
-	paymaster := getPaymaster(sendUop.UserOperation)
+	paymaster := getPaymaster(sendUop)
 	if !(paymasterCheck || paymaster == zeroAddress) {
 		http.Error(respw, "paymaster not contract or zero address", e.JsonRpcInvalidParams)
 		return
 	}
 	//6. maxFeePerGas and maxPriorityFeeGas are greater or equal than block's basefee
 	currBaseFee := getCurrentBlockBasefee()
-	if !(sendUop.UserOperation.MaxFeePerGas.Cmp(currBaseFee) > 0 && sendUop.UserOperation.MaxPriorityFeePerGas.Cmp(currBaseFee) > 0) {
+	if !(sendUop.MaxFeePerGas.Cmp(currBaseFee) > 0 && sendUop.MaxPriorityFeePerGas.Cmp(currBaseFee) > 0) {
 		http.Error(respw, "Max fee per gas too low ", e.JsonRpcInvalidParams)
 		return
 	}
@@ -156,15 +162,14 @@ func handle_eth_supportedEntryPoints(respw http.ResponseWriter, req *http.Reques
 	respw.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(respw, safeEntryPoints[0].String())
 }
-
-func NewTypeUserOperationWithEntryPoint(data []interface{}) *UserOperationWithEntryPoint { //needs to be tested
-	var UserOPwEP UserOperationWithEntryPoint
-	json.Unmarshal([]byte(data[0].(string)), &UserOPwEP) //incorporate err handling for unmarshalling
-	return &UserOPwEP
+func NewTypeUserOperation(data interface{}) *_UserOperation { //needs to be tested
+	var UserOP _UserOperation
+	//should unmarshall param 0 to struct type _UserOperation
+	return &UserOP
 }
 
-func (s *UserOperationWithEntryPoint) checkSafeEntryPoint() bool {
-	ep := s.EntryPoint
+func checkSafeEntryPoint(s []interface{}) bool {
+	ep := common.HexToAddress(fmt.Sprintf("%v", s[1]))
 	for _, safeAddress := range safeEntryPoints {
 		if ep == safeAddress {
 			return true
@@ -173,12 +178,14 @@ func (s *UserOperationWithEntryPoint) checkSafeEntryPoint() bool {
 	return false
 }
 
-func (s *UserOperationWithEntryPoint) addressHasCode() (bool, error) {
-	conn, err := ethclient.Dial(getClient())
+func addressHasCode(s *_UserOperation) (bool, error) {
+	conn, err := ethclient.Dial(os.Getenv("CLIENT"))
+
 	if err != nil {
 		return false, err
 	}
-	address := s.UserOperation.Sender
+
+	address := s.Sender
 	ctx := context.Background()
 	code, err := conn.CodeAt(ctx, address, nil)
 	if err != nil {
@@ -204,7 +211,7 @@ func getClient() string {
 	return os.Getenv("CLIENT")
 }
 
-func getPaymaster(uop _UserOperation) common.Address {
+func getPaymaster(uop *_UserOperation) common.Address {
 	pda := uop.PaymasterAndData
 	return common.BytesToAddress(pda[0:41])
 }
