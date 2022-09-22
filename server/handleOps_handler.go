@@ -8,7 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	typ "github.com/ethereum/go-ethereum/core/types"
-	ethclient "github.com/ethereum/go-ethereum/ethClient"
+	ethclient "github.com/ethereum/go-ethereum/ethclient"
 )
 
 func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
