@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -21,7 +20,12 @@ func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
 		return false, nil, err
 	}
 	chainID, _ := conn.ChainID(context.Background())
-	auth, err := bind.NewTransactorWithChainID(strings.NewReader(os.Getenv("KEY")), os.Getenv("PASSPHRASE"), chainID)
+	rdr := string(os.Getenv("KEY_IN"))
+	r, err := os.Open(rdr)
+	if err != nil {
+		return false, nil, err
+	}
+	auth, err := bind.NewTransactorWithChainID(r, os.Getenv("PASSPHRASE"), chainID)
 	if err != nil {
 		return false, nil, err
 	}
