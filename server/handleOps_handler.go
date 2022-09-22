@@ -11,7 +11,7 @@ import (
 	ethclient "github.com/ethereum/go-ethereum/ethclient"
 )
 
-func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
+func (s User_Operation) CallHandleOps() (bool, *typ.Transaction, error) {
 	conn, err := ethclient.Dial(getClient())
 	if err != nil {
 		return false, nil, err
@@ -34,7 +34,7 @@ func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
 
 }
 
-func buildUserOperationArray(uop _UserOperation) []UserOperation {
+func buildUserOperationArray(uop User_Operation) []UserOperation {
 	var ops = []UserOperation{
 		UserOperation{
 			Sender:               uop.Sender,

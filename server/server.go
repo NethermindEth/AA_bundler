@@ -8,11 +8,12 @@ import (
 
 	// "go/types"
 
-	e "flashbotsAAbundler/consts"
+	// e "flashbotsAAbundler/consts"
 	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	ethclient "github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
@@ -27,7 +28,7 @@ var (
 	zeroAddress = common.HexToAddress("0x0000000000000000000000000000000000000000")
 )
 
-type _UserOperation struct {
+type User_Operation struct {
 	Sender               common.Address `json:"sender"`
 	Nonce                *big.Int       `json:"nonce"`
 	InitCode             []byte         `json:"initCode"`
@@ -42,15 +43,31 @@ type _UserOperation struct {
 }
 
 type UserOperationWithEntryPoint struct {
-	UserOperation _UserOperation `json:"params"`
+	UserOperation User_Operation `json:"params"`
 	EntryPoint    common.Address `json:"entryPoint"`
+}
+type UserOperationJSON struct {
+	User_Operation struct {
+		Sender               common.Address `json:"sender"`
+		Nonce                string         `json:"nonce"`
+		InitCode             string         `json:"initCode"`
+		CallData             string         `json:"callData"`
+		CallGas              string         `json:"callGas"`
+		VerificationGas      string         `json:"verificationGas"`
+		PreVerificationGas   string         `json:"preVerificationGas"`
+		MaxFeePerGas         string         `json:"maxFeePerGas"`
+		MaxPriorityFeePerGas string         `json:"maxPriorityFeePerGas"`
+		PaymasterAndData     string         `json:"paymasterAndData"`
+		Signature            string         `json:"signature"`
+	} `json:"userOperation"`
+	EntryPoint common.Address `json:"entryPoint"`
 }
 
 type Request struct { //from EIP
-	Jsonrpc string        `json:"jsonrpc"`
-	Id      *big.Int      `json:"id"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"` //1st User op, 2nd entry point
+	Jsonrpc string            `json:"jsonrpc"`
+	Id      *big.Int          `json:"id"`
+	Method  string            `json:"method"`
+	Params  UserOperationJSON `json:"params"` //1st User op, 2nd entry point
 }
 type Response struct {
 	Jsonrpc string   `json:"jsonrpc"`
@@ -86,74 +103,75 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 		http.Error(respw, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// fmt.Printf("t1: %s\n", reflect.TypeOf(r.Params))
-	sendUop := NewTypeUserOperation(r.Params[0])
-	fmt.Print(r.Params[0])
-	fmt.Print(sendUop)
-	//Checking for safe Entry Point
-	if !checkSafeEntryPoint(r.Params) {
-		http.Error(respw, "Entry point not safe,", e.JsonRpcInvalidParams)
-		return
-	}
-	//basic sanity checks
-	//1. Check the length of params
-	if len(r.Params) != 2 {
-		http.Error(respw, "invalid number of params for eth_sendUserOperation", e.JsonRpcInvalidParams)
-		return
-	}
-	//2. Either the sender is an existing contract, or the initCode is not empty (but not both)
-	senderCheck, err := addressHasCode(sendUop)
-	if err != nil {
-		http.Error(respw, err.Error(), e.JsonRpcInternalError) //error type not sure
-		return
-	}
-	if !senderCheck && sendUop.InitCode == nil {
-		http.Error(respw, "neither sender nor initcode available", e.JsonRpcInvalidParams)
-		return
-	}
-	if senderCheck && sendUop.InitCode != nil {
-		http.Error(respw, "cant take wallet as well as InitCode", e.JsonRpcInvalidParams)
-	}
-	//3. Verification gas is sufficiently low
-	max_verification_gas := big.NewInt(100e9) //from kristof's mev searcher bot. Needs optimization
-	if sendUop.VerificationGas.Cmp(max_verification_gas) > 0 {
-		http.Error(respw, "verification gas higher than max_verification_gas", e.JsonRpcInvalidParams)
-	}
-	//4.preVerification gas is sufficiently high
-	sum := big.NewInt(0)
-	sum.Add(sendUop.CallGas, sendUop.VerificationGas)
-	if sendUop.PreVerificationGas.Cmp(sum) < 0 {
-		http.Error(respw, "PreVerificationGas is not high enough", e.JsonRpcInvalidParams)
-	}
-	//5. Paymaster is either zero address or contract with non zero code, registered and staked, sufficient deposit and not blacklisted
-	//TODO need to have a db to handle registered paymasters and blacklisted paymasters
-	//TODO check for sufficient deposit
-	fmt.Println(r.Params[0])
-	paymasterCheck, err := addressHasCode(sendUop)
-	if err != nil {
-		http.Error(respw, "error while getting code from sender address", e.JsonRpcInternalError) //error type not confirmed
-		return
-	}
-	paymaster := getPaymaster(sendUop)
-	if !(paymasterCheck || paymaster == zeroAddress) {
-		http.Error(respw, "paymaster not contract or zero address", e.JsonRpcInvalidParams)
-		return
-	}
-	//6. maxFeePerGas and maxPriorityFeeGas are greater or equal than block's basefee
-	currBaseFee := getCurrentBlockBasefee()
-	if !(sendUop.MaxFeePerGas.Cmp(currBaseFee) > 0 && sendUop.MaxPriorityFeePerGas.Cmp(currBaseFee) > 0) {
-		http.Error(respw, "Max fee per gas too low ", e.JsonRpcInvalidParams)
-		return
-	}
-	//TODO-7. Sender does not have another user op already in the pool. if that is the case the new tx should have +1 nonce
 
-	//calling handleOps function
+	// fmt.Printf("t1: %s\n", reflect.TypeOf(r.Params))
+	fmt.Print("r.params ", r.Params)
+	sendUop := NewTypeUserOperationWithEntryPoint(r.Params)
+	fmt.Println(sendUop)
+	//Checking for safe Entry Point
+	// if !checkSafeEntryPoint(r.Params) {
+	// 	http.Error(respw, "Entry point not safe,", e.JsonRpcInvalidParams)
+	// 	return
+	// }
+	// //basic sanity checks
+	// //1. Check the length of params
+	// if len(r.Params) != 2 {
+	// 	http.Error(respw, "invalid number of params for eth_sendUserOperation", e.JsonRpcInvalidParams)
+	// 	return
+	// }
+	// //2. Either the sender is an existing contract, or the initCode is not empty (but not both)
+	// senderCheck, err := addressHasCode(sendUop)
+	// if err != nil {
+	// 	http.Error(respw, err.Error(), e.JsonRpcInternalError) //error type not sure
+	// 	return
+	// }
+	// if !senderCheck && sendUop.InitCode == nil {
+	// 	http.Error(respw, "neither sender nor initcode available", e.JsonRpcInvalidParams)
+	// 	return
+	// }
+	// if senderCheck && sendUop.InitCode != nil {
+	// 	http.Error(respw, "cant take wallet as well as InitCode", e.JsonRpcInvalidParams)
+	// }
+	// //3. Verification gas is sufficiently low
+	// max_verification_gas := big.NewInt(100e9) //from kristof's mev searcher bot. Needs optimization
+	// if sendUop.VerificationGas.Cmp(max_verification_gas) > 0 {
+	// 	http.Error(respw, "verification gas higher than max_verification_gas", e.JsonRpcInvalidParams)
+	// }
+	// //4.preVerification gas is sufficiently high
+	// sum := big.NewInt(0)
+	// sum.Add(sendUop.CallGas, sendUop.VerificationGas)
+	// if sendUop.PreVerificationGas.Cmp(sum) < 0 {
+	// 	http.Error(respw, "PreVerificationGas is not high enough", e.JsonRpcInvalidParams)
+	// }
+	// //5. Paymaster is either zero address or contract with non zero code, registered and staked, sufficient deposit and not blacklisted
+	// //TODO need to have a db to handle registered paymasters and blacklisted paymasters
+	// //TODO check for sufficient deposit
+	// fmt.Println(r.Params[0])
+	// paymasterCheck, err := addressHasCode(sendUop)
+	// if err != nil {
+	// 	http.Error(respw, "error while getting code from sender address", e.JsonRpcInternalError) //error type not confirmed
+	// 	return
+	// }
+	// paymaster := getPaymaster(sendUop)
+	// if !(paymasterCheck || paymaster == zeroAddress) {
+	// 	http.Error(respw, "paymaster not contract or zero address", e.JsonRpcInvalidParams)
+	// 	return
+	// }
+	// //6. maxFeePerGas and maxPriorityFeeGas are greater or equal than block's basefee
+	// currBaseFee := getCurrentBlockBasefee()
+	// if !(sendUop.MaxFeePerGas.Cmp(currBaseFee) > 0 && sendUop.MaxPriorityFeePerGas.Cmp(currBaseFee) > 0) {
+	// 	http.Error(respw, "Max fee per gas too low ", e.JsonRpcInvalidParams)
+	// 	return
+	// }
+	// //TODO-7. Sender does not have another user op already in the pool. if that is the case the new tx should have +1 nonce
+
+	// //calling handleOps function
 	// success, tx, err := sendUop.CallHandleOps()
-	if err != nil {
-		http.Error(respw, "Handle Ops Call failed", e.JsonRpcTransactionError)
-	}
+	// if err != nil {
+	// 	http.Error(respw, "Handle Ops Call failed", e.JsonRpcTransactionError)
+	// }
 	// resData := r.WriteRPCResponse(success, tx.Hash())
-	//need to check if this approach works
+	// //need to check if this approach works
 	// json.NewEncoder(respw).Encode(resData)
 
 }
@@ -162,10 +180,34 @@ func handle_eth_supportedEntryPoints(respw http.ResponseWriter, req *http.Reques
 	respw.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(respw, safeEntryPoints[0].String())
 }
-func NewTypeUserOperation(data interface{}) *_UserOperation { //needs to be tested
-	var UserOP _UserOperation
-	//should unmarshall param 0 to struct type _UserOperation
-	return &UserOP
+func NewTypeUserOperationWithEntryPoint(json UserOperationJSON) *UserOperationWithEntryPoint { //needs to be tested
+	nonce, _ := hexutil.DecodeBig(json.User_Operation.Nonce)
+	initCode, _ := hexutil.Decode(json.User_Operation.InitCode)
+	callData, _ := hexutil.Decode(json.User_Operation.CallData)
+	callGas, _ := hexutil.DecodeBig(json.User_Operation.CallGas)
+	verificationGas, _ := hexutil.DecodeBig(json.User_Operation.VerificationGas)
+	preVerificationGas, _ := hexutil.DecodeBig(json.User_Operation.PreVerificationGas)
+	maxFeePerGas, _ := hexutil.DecodeBig(json.User_Operation.MaxFeePerGas)
+	maxPriorityFeePerGas, _ := hexutil.DecodeBig(json.User_Operation.MaxPriorityFeePerGas)
+	paymasterAndData, _ := hexutil.Decode(json.User_Operation.PaymasterAndData)
+	signature, _ := hexutil.Decode(json.User_Operation.Signature)
+
+	return &UserOperationWithEntryPoint{
+		UserOperation: User_Operation{
+			Sender:               json.User_Operation.Sender,
+			Nonce:                nonce,
+			InitCode:             initCode,
+			CallData:             callData,
+			CallGas:              callGas,
+			VerificationGas:      verificationGas,
+			PreVerificationGas:   preVerificationGas,
+			MaxFeePerGas:         maxFeePerGas,
+			MaxPriorityFeePerGas: maxPriorityFeePerGas,
+			PaymasterAndData:     paymasterAndData,
+			Signature:            signature,
+		},
+		EntryPoint: json.EntryPoint,
+	}
 }
 
 func checkSafeEntryPoint(s []interface{}) bool {
@@ -178,7 +220,7 @@ func checkSafeEntryPoint(s []interface{}) bool {
 	return false
 }
 
-func addressHasCode(s *_UserOperation) (bool, error) {
+func addressHasCode(s *User_Operation) (bool, error) {
 	conn, err := ethclient.Dial(os.Getenv("CLIENT"))
 
 	if err != nil {
@@ -211,7 +253,7 @@ func getClient() string {
 	return os.Getenv("CLIENT")
 }
 
-func getPaymaster(uop *_UserOperation) common.Address {
+func getPaymaster(uop *User_Operation) common.Address {
 	pda := uop.PaymasterAndData
 	return common.BytesToAddress(pda[0:41])
 }
