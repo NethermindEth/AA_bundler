@@ -14,7 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/misc"
-	ethclient "github.com/ethereum/go-ethereum/ethClient"
+	ethclient "github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/joho/godotenv"
@@ -148,13 +148,13 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 	//TODO-7. Sender does not have another user op already in the pool. if that is the case the new tx should have +1 nonce
 
 	//calling handleOps function
-	success, tx, err := sendUop.CallHandleOps()
+	// success, tx, err := sendUop.CallHandleOps()
 	if err != nil {
 		http.Error(respw, "Handle Ops Call failed", e.JsonRpcTransactionError)
 	}
-	resData := r.WriteRPCResponse(success, tx.Hash())
+	// resData := r.WriteRPCResponse(success, tx.Hash())
 	//need to check if this approach works
-	json.NewEncoder(respw).Encode(resData)
+	// json.NewEncoder(respw).Encode(resData)
 
 }
 
