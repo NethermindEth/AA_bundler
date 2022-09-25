@@ -99,11 +99,10 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 	//copying the params of the call to a type userOperationWithEntryPoint struct for ease in sanity checks
 	var r Request
 	err := json.NewDecoder(req.Body).Decode(&r)
-	if err != nil {
-		http.Error(respw, err.Error(), http.StatusBadRequest)
-		return
-
-	}
+	// if err != nil {
+	// 	http.Error(respw, err.Error(), http.StatusBadRequest)
+	// 	return
+	// }
 	// fmt.Printf("t1: %s\n", reflect.TypeOf(r.Params))
 	UopwithEP := NewTypeUserOperation(r.Params[0])
 	fmt.Println(UopwithEP)
@@ -118,41 +117,41 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 		http.Error(respw, "invalid number of params for eth_sendUserOperation", e.JsonRpcInvalidParams)
 		return
 	}
-	fmt.Println("check")
 	//2. Either the sender is an existing contract, or the initCode is not empty (but not both)
+
 	senderCheck, err := addressHasCode(UopwithEP.UserOperation)
 	if err != nil {
 		http.Error(respw, err.Error(), e.JsonRpcInternalError) //error type not sure
 		return
 	}
-	fmt.Println("check")
+
 	if !senderCheck && UopwithEP.UserOperation.InitCode == nil {
 		http.Error(respw, "neither sender nor initcode available", e.JsonRpcInvalidParams)
 		return
 	}
-	fmt.Println("check")
+
+	fmt.Println("InitCode: ", UopwithEP.UserOperation.InitCode == nil)
 	if senderCheck && UopwithEP.UserOperation.InitCode != nil {
 		http.Error(respw, "cant take wallet as well as InitCode", e.JsonRpcInvalidParams)
+		return
 	}
-	fmt.Println("check")
 	//3. Verification gas is sufficiently low
 	max_verification_gas := big.NewInt(100e9) //from kristof's mev searcher bot. Needs optimization
 	if UopwithEP.UserOperation.VerificationGas.Cmp(max_verification_gas) > 0 {
 		http.Error(respw, "verification gas higher than max_verification_gas", e.JsonRpcInvalidParams)
 		return
 	}
-	fmt.Println("check")
+
 	//4.preVerification gas is sufficiently high
 	sum := big.NewInt(0)
 	sum.Add(UopwithEP.UserOperation.CallGas, UopwithEP.UserOperation.VerificationGas)
 	if UopwithEP.UserOperation.PreVerificationGas.Cmp(sum) < 0 {
 		http.Error(respw, "PreVerificationGas is not high enough", e.JsonRpcInvalidParams)
 	}
-	fmt.Println("check")
+
 	//5. Paymaster is either zero address or contract with non zero code, registered and staked, sufficient deposit and not blacklisted
 	//TODO need to have a db to handle registered paymasters and blacklisted paymasters
 	//TODO check for sufficient deposit
-	fmt.Println(r.Params[0])
 	paymasterCheck, err := addressHasCode(UopwithEP.UserOperation)
 	if err != nil {
 		http.Error(respw, "error while getting code from sender address", e.JsonRpcInternalError) //error type not confirmed
@@ -218,11 +217,9 @@ func checkSafeEntryPoint(s UserOperationWithEntryPoint) bool {
 
 func addressHasCode(uop _UserOperation) (bool, error) {
 	conn, err := ethclient.Dial(os.Getenv("CLIENT"))
-
 	if err != nil {
 		return false, err
 	}
-
 	address := uop.Sender
 	ctx := context.Background()
 	code, err := conn.CodeAt(ctx, address, nil)
