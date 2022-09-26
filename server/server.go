@@ -117,6 +117,7 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 		http.Error(respw, "invalid number of params for eth_sendUserOperation", e.JsonRpcInvalidParams)
 		return
 	}
+
 	//2. Either the sender is an existing contract, or the initCode is not empty (but not both)
 
 	senderCheck, err := addressHasCode(UopwithEP.UserOperation)
@@ -130,18 +131,19 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	fmt.Println("InitCode: ", UopwithEP.UserOperation.InitCode == nil)
+	fmt.Println("InitCode: ", UopwithEP.UserOperation.InitCode != nil)
 	if senderCheck && UopwithEP.UserOperation.InitCode != nil {
 		http.Error(respw, "cant take wallet as well as InitCode", e.JsonRpcInvalidParams)
 		return
 	}
+
 	//3. Verification gas is sufficiently low
 	max_verification_gas := big.NewInt(100e9) //from kristof's mev searcher bot. Needs optimization
 	if UopwithEP.UserOperation.VerificationGas.Cmp(max_verification_gas) > 0 {
 		http.Error(respw, "verification gas higher than max_verification_gas", e.JsonRpcInvalidParams)
 		return
 	}
-
+	fmt.Println("Check 3")
 	//4.preVerification gas is sufficiently high
 	sum := big.NewInt(0)
 	sum.Add(UopwithEP.UserOperation.CallGas, UopwithEP.UserOperation.VerificationGas)
@@ -162,12 +164,18 @@ func handle_eth_sendUserOperation(respw http.ResponseWriter, req *http.Request) 
 		http.Error(respw, "paymaster not contract or zero address", e.JsonRpcInvalidParams)
 		return
 	}
+
 	//6. maxFeePerGas and maxPriorityFeeGas are greater or equal than block's basefee
-	currBaseFee := getCurrentBlockBasefee()
+	currBaseFee, err := getCurrentBlockBasefee()
+	if err != nil {
+		http.Error(respw, "failed to get block basefee", e.JsonRpcInternalError)
+	}
+	fmt.Println(currBaseFee)
 	if !(UopwithEP.UserOperation.MaxFeePerGas.Cmp(currBaseFee) > 0 && UopwithEP.UserOperation.MaxPriorityFeePerGas.Cmp(currBaseFee) > 0) {
 		http.Error(respw, "Max fee per gas too low ", e.JsonRpcInvalidParams)
 		return
 	}
+
 	//TODO-7. Sender does not have another user op already in the pool. if that is the case the new tx should have +1 nonce
 
 	//calling handleOps function
@@ -216,7 +224,7 @@ func checkSafeEntryPoint(s UserOperationWithEntryPoint) bool {
 }
 
 func addressHasCode(uop _UserOperation) (bool, error) {
-	conn, err := ethclient.Dial(os.Getenv("CLIENT"))
+	conn, err := ethclient.Dial(getClient())
 	if err != nil {
 		return false, err
 	}
@@ -232,14 +240,17 @@ func addressHasCode(uop _UserOperation) (bool, error) {
 		return false, nil
 	}
 }
-func getCurrentBlockBasefee() *big.Int {
-	config := params.MainnetChainConfig
+func getCurrentBlockBasefee() (*big.Int, error) {
+	config := params.GoerliChainConfig //needs to be changed to mainnet config
 	ethClient, _ := ethclient.DialContext(context.Background(), getClient())
 	bn, _ := ethClient.BlockNumber(context.Background())
 	bignumBn := big.NewInt(0).SetUint64(bn)
-	blk, _ := ethClient.BlockByNumber(context.Background(), bignumBn)
+	blk, err := ethClient.BlockByNumber(context.Background(), bignumBn)
+	if err != nil {
+		return big.NewInt(0), err
+	}
 	baseFee := misc.CalcBaseFee(config, blk.Header())
-	return baseFee
+	return baseFee, nil
 }
 
 func getClient() string {
@@ -248,5 +259,6 @@ func getClient() string {
 
 func getPaymaster(uop _UserOperation) common.Address {
 	pda := uop.PaymasterAndData
-	return common.BytesToAddress(pda[0:41])
+	fmt.Println(pda)
+	return zeroAddress
 }
