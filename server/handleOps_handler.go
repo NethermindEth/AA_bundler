@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,6 +22,7 @@ func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
 		return false, nil, err
 	}
 	chainID, _ := conn.ChainID(context.Background())
+	fmt.Println("chain id", chainID)
 	rdr := string(os.Getenv("KEY_IN"))
 	r, err := os.Open(rdr)
 	if err != nil {
@@ -29,7 +32,9 @@ func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
 	if err != nil {
 		return false, nil, err
 	}
+
 	uop_array := buildUserOperationArray(s)
+	fmt.Println(reflect.TypeOf(uop_array[0].Nonce))
 	tx, err := EP.HandleOps(auth, uop_array, common.HexToAddress(os.Getenv("TEMP_BENEFICIARY")))
 	if err != nil {
 		return false, nil, err
@@ -40,18 +45,18 @@ func (s _UserOperation) CallHandleOps() (bool, *typ.Transaction, error) {
 
 func buildUserOperationArray(uop _UserOperation) []UserOperation {
 	var ops = []UserOperation{
-		UserOperation{
+		{
 			Sender:               uop.Sender,
 			Nonce:                uop.Nonce,
-			InitCode:             uop.InitCode,
-			CallData:             uop.CallData,
-			CallGasLimit:         uop.CallGas,
-			VerificationGasLimit: uop.VerificationGas,
+			InitCode:             []byte(uop.InitCode),
+			CallData:             []byte(uop.CallData),
+			CallGasLimit:         uop.CallGasLimit,
+			VerificationGasLimit: uop.VerificationGasLimit,
 			PreVerificationGas:   uop.PreVerificationGas,
 			MaxFeePerGas:         uop.MaxFeePerGas,
 			MaxPriorityFeePerGas: uop.MaxPriorityFeePerGas,
-			PaymasterAndData:     uop.PaymasterAndData,
-			Signature:            uop.Signature,
+			PaymasterAndData:     []byte(uop.PaymasterAndData),
+			Signature:            []byte(uop.Signature),
 		},
 	}
 	return ops
